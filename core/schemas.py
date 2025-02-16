@@ -2,10 +2,10 @@
 
 from typing import Self
 
-from TGConvertor import SessionManager
+from TGConvertor import SessionManager  # type: ignore
 from pydantic import BaseModel, field_validator
 
-from core.types import BotConfig, ChatConfig, BotConfigDict, ChatConfigDict
+from core.project_types import BotConfig, ChatConfig, BotConfigDict, ChatConfigDict
 
 
 class TelegramBot(BaseModel):
@@ -45,7 +45,7 @@ class TelegramBot(BaseModel):
         """
         if v.startswith("1") and v.endswith("="):
             session = SessionManager.from_telethon_string(v)
-            return session.to_pyrogram_string()
+            return str(session.to_pyrogram_string())
         return v
 
     def to_bot_config(self) -> BotConfig:
