@@ -1,1 +1,2 @@
-good-names=ChatID, BotIndex, UserID, LastMessageAuthors, LastMessageTime
+[BASIC]
+good-names=ChatID,BotIndex,UserID,LastMessageAuthors,LastMessageTime

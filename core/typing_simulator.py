@@ -7,7 +7,7 @@ from loguru import logger
 from pyrogram import enums
 from pyrogram.errors import FloodWait, UserNotParticipant
 
-from config import settings
+from project_config import settings
 
 if TYPE_CHECKING:
     from pyrogram.client import Client
