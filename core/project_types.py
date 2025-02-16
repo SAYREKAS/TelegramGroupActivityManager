@@ -1,7 +1,8 @@
 """Data types for the project.
 
 This module contains definitions of data types used in the project,
-including protocols for bots and Telegram clients, as well as schemas for bot and chat configurations.
+including protocols for bots and Telegram clients, as well as schemas
+for bot and chat configurations.
 """
 
 from typing import TYPE_CHECKING, Protocol, TypeAlias
@@ -48,7 +49,7 @@ class ChatConfig(TypedDict):
 class BotConfig(TypedDict):
     """Configuration for a bot."""
 
-    phone: str
+    phone: int
     api_id: int
     api_hash: str
     session: str

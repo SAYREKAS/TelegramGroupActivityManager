@@ -11,7 +11,7 @@ from core.project_types import BotConfig, ChatConfig, BotConfigDict, ChatConfigD
 class TelegramBot(BaseModel):
     """Base model for a Telegram bot."""
 
-    phone: str
+    phone: int
     api_id: int
     api_hash: str
     session: str
@@ -27,7 +27,7 @@ class TelegramBot(BaseModel):
             Self: An instance of the TelegramBot class.
         """
         return cls(
-            phone=str(data["phone"]),
+            phone=int(data["phone"]),
             api_id=int(data["api_id"]),
             api_hash=str(data["api_hash"]),
             session=str(data["session"]),
