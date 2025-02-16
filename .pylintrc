@@ -1,2 +1,5 @@
 [BASIC]
 good-names=ChatID,BotIndex,UserID,LastMessageAuthors,LastMessageTime
+
+[MESSAGES CONTROL]
+disable=import-error,broad-exception-caught,too-many-arguments,too_many_positional_arguments
