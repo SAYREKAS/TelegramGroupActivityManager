@@ -10,7 +10,7 @@ from pyrogram.errors import FloodWait, UserNotParticipant
 from config import settings
 
 if TYPE_CHECKING:
-    from pyrogram import Client
+    from pyrogram.client import Client
 
 
 class TypingSimulator:
@@ -27,7 +27,7 @@ class TypingSimulator:
         """
         return min(text_length * settings.TYPING_SPEED, settings.MAX_TYPING_TIME)
 
-    async def simulate_typing(self, client: "Client", chat_id: int, text_length: int = 0):
+    async def simulate_typing(self, client: "Client", chat_id: int, text_length: int = 0) -> None:
         """Mimics a set of text based on its length.
 
         Args:
