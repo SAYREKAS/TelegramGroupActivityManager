@@ -9,7 +9,7 @@ from typing_extensions import TypedDict
 
 
 if TYPE_CHECKING:
-    from pyrogram import Client
+    from pyrogram.client import Client
 
 ChatID: TypeAlias = int
 BotIndex: TypeAlias = int
