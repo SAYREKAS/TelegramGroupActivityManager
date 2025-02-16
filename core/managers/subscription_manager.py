@@ -18,22 +18,23 @@ if TYPE_CHECKING:
 class SubscriptionManager:
     """Manager for handling bot subscriptions to groups"""
 
-    _chat_ids: dict[str, int] = {}
     _subscribed_bots: dict[int, set[int]] = {}
     _cache_file = "chat_ids_cache.json"
+
+    chat_ids: dict[str, int] = {}
 
     @classmethod
     async def get_chat_id_from_invite(cls, client: "Client", invite_link: str, bot_name: str = "Unknown") -> int | None:
         """Gets the chat ID from an invite link"""
         try:
             # Check cache
-            if invite_link in cls._chat_ids:
-                return cls._chat_ids[invite_link]
+            if invite_link in cls.chat_ids:
+                return cls.chat_ids[invite_link]
 
             # Get chat_id
             chat_id = await ChatManager.get_chat_id_from_invite(client, invite_link, bot_name)
             if chat_id:
-                cls._chat_ids[invite_link] = chat_id
+                cls.chat_ids[invite_link] = chat_id
                 cls.save_cache()
                 logger.success(f"Bot {bot_name} cached chat ID {chat_id} for {invite_link}")
                 return chat_id
@@ -129,7 +130,7 @@ class SubscriptionManager:
 
         # First, get all chat_ids
         for chat in chats:
-            if chat["invite_link"] not in cls._chat_ids:
+            if chat["invite_link"] not in cls.chat_ids:
                 for bot in bots:
                     try:
                         if await cls.get_chat_id_from_invite(bot.client, chat["invite_link"], bot.name):
@@ -143,7 +144,7 @@ class SubscriptionManager:
         tasks = []
         for bot in bots:
             for chat in chats:
-                chat_id = cls._chat_ids.get(chat["invite_link"])
+                chat_id = cls.chat_ids.get(chat["invite_link"])
                 if not chat_id:
                     logger.warning(f"No chat ID found for {chat['invite_link']}, skipping...")
                     continue
@@ -161,7 +162,7 @@ class SubscriptionManager:
             if os.path.exists(cls._cache_file):
                 with open(cls._cache_file, encoding="utf-8") as f:
                     data: dict[str, Any] = json.load(f)
-                    cls._chat_ids = {str(k): int(v) for k, v in data.get("chat_ids", {}).items()}
+                    cls.chat_ids = {str(k): int(v) for k, v in data.get("chat_ids", {}).items()}
                     cls._subscribed_bots = {int(k): set(v) for k, v in data.get("subscribed_bots", {}).items()}
 
         except Exception as e:
@@ -172,7 +173,7 @@ class SubscriptionManager:
         """Saves the cache of chat_ids and subscriptions"""
         try:
             data = {
-                "chat_ids": cls._chat_ids,
+                "chat_ids": cls.chat_ids,
                 "subscribed_bots": {str(k): list(v) for k, v in cls._subscribed_bots.items()},
             }
             with open(cls._cache_file, "w", encoding="utf-8") as f:
