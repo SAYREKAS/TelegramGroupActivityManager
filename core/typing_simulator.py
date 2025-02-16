@@ -46,9 +46,7 @@ class TypingSimulator:
             await client.send_chat_action(chat_id, enums.ChatAction.CANCEL)
 
         except FloodWait as e:
-            logger.warning(
-                f"FloodWait error: {e.value} seconds. Please wait before sending more messages."
-            )
+            logger.warning(f"FloodWait error: {e.value} seconds. Please wait before sending more messages.")
 
         except UserNotParticipant as e:
             logger.error(f"User not a participant in chat {chat_id}: {e}")

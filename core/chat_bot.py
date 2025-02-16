@@ -22,7 +22,7 @@ class ChatBot:
 
     def __init__(self) -> None:
         """Initializes the chat bot with the API key."""
-        self.client = OpenAI(api_key=settings.OPEN_API_KEY)
+        self.client = OpenAI(api_key=settings.chat_bot.OPEN_API_KEY)
         self.message_history: dict[int, list[str]] = {}
 
     def _get_response(self, messages: Iterable[ChatCompletionMessageParam]) -> str:
@@ -31,9 +31,9 @@ class ChatBot:
             logger.debug(f"Sending messages to LLM: {messages}")
 
             response = self.client.chat.completions.create(
-                model=settings.MODEL,
+                model=settings.chat_bot.MODEL,
                 messages=messages,
-                temperature=settings.TEMPERATURE,
+                temperature=settings.chat_bot.TEMPERATURE,
             )
             return str(response.choices[0].message.content)
 
@@ -74,7 +74,7 @@ class ChatBot:
                     
                     <rules>
                     Important communication rules:
-                    {settings.GENERATE_RESPONSE_RULES}
+                    {settings.chat_bot.GENERATE_RESPONSE_RULES}
                     </rules>
                     """,
                 )
@@ -83,16 +83,12 @@ class ChatBot:
             chat_history = self.message_history.get(chat_id, [])
             for msg in chat_history:
                 if msg.startswith("Assistant: "):
-                    messages.append(
-                        ChatCompletionAssistantMessageParam(role="assistant", content=msg[11:])
-                    )
+                    messages.append(ChatCompletionAssistantMessageParam(role="assistant", content=msg[11:]))
                 else:
                     messages.append(ChatCompletionUserMessageParam(role="user", content=msg))
 
             if is_reply and reply_text:
-                messages.append(
-                    ChatCompletionAssistantMessageParam(role="assistant", content=reply_text)
-                )
+                messages.append(ChatCompletionAssistantMessageParam(role="assistant", content=reply_text))
             if message:
                 messages.append(ChatCompletionUserMessageParam(role="user", content=message))
 
@@ -121,7 +117,7 @@ class ChatBot:
 
                 <rules>
                 Important rules:
-                {settings.GENERATE_INITIAL_MESSAGE_RULES}
+                {settings.chat_bot.GENERATE_INITIAL_MESSAGE_RULES}
                 </rules>
                 """,
             )
