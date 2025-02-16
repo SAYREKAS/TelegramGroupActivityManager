@@ -582,4 +582,3 @@ cython_debug/
 
 *.env
 *json
-database.py
