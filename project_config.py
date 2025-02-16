@@ -1,7 +1,6 @@
 """Module for project settings."""
 
 import os.path
-from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -58,6 +57,8 @@ class Settings(BaseSettings):
         env_prefix="APP__",
         env_nested_delimiter="__",
     )
+
+    FLOOD_LIMIT: float = Field(default=3.0, description="")
 
     chat_bot: ChatBotConfig = ChatBotConfig()
 

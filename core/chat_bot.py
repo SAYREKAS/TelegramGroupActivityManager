@@ -66,12 +66,12 @@ class ChatBot:
                     <role>
                     You are a participant in a group chat. 
                     </role>
-                    
+
                     <context>
                     The context of the group (for understanding the topic):
                     {prompt}
                     </context>
-                    
+
                     <rules>
                     Important communication rules:
                     {settings.chat_bot.GENERATE_RESPONSE_RULES}
@@ -109,7 +109,7 @@ class ChatBot:
                 <role>
                 You are a regular participant in a group chat. 
                 </role>
-                
+
                 <context>
                 The context of the group (for understanding the topic):
                 {prompt}
