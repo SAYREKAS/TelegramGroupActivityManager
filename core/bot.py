@@ -1,4 +1,4 @@
-"""Клас для роботи з ботами"""
+"""Class to work with boots"""
 
 from typing import TYPE_CHECKING
 
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class Bot(BotProtocol):
-    """Клас для роботи з ботом"""
+    """Class to work with a bot"""
 
     def __init__(self, name: str, bot_data: "TelegramBot"):
         self.name = name
@@ -32,3 +32,17 @@ class Bot(BotProtocol):
         # Реєструємо бота в менеджері
         self.bot_manager = BotManager()
         self.bot_index = self.bot_manager.register_bot(self)
+
+    @staticmethod
+    def _normalize_chat_id(chat_id: int) -> int:
+        """Normalizes Chat ID for internal use"""
+
+        str_id = str(chat_id)
+
+        if str_id.startswith("-100"):
+            return int(str_id[4:])  # Видаляємо -100
+
+        elif str_id.startswith("-"):
+            return int(str_id[1:])  # Видаляємо мінус
+
+        return chat_id
