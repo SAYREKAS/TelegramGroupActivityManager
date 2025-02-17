@@ -91,15 +91,6 @@ class ChatConfig(TypedDict):
     prompt: str
 
 
-class BotConfig(TypedDict):
-    """Configuration for a bot."""
-
-    phone: int
-    api_id: int
-    api_hash: str
-    session: str
-
-
 # Types for configuration
 BotConfigDict = dict[str, str | int]
 ChatConfigDict = dict[str, str]
