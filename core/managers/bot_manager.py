@@ -71,7 +71,7 @@ class BotManager:
         """Selects a random bot as the main bot.
 
         Raises:
-            ValueError: If no bots are registered or bots are not initialized
+            ValueError: If no bots are registered or bots are not initialized.
         """
         if not cls._bots:
             raise ValueError("No bots registered")

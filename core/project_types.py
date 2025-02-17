@@ -6,8 +6,8 @@ for bot and chat configurations.
 """
 
 from typing import TYPE_CHECKING, Protocol, TypeAlias, Literal
-from typing_extensions import TypedDict
 
+from typing_extensions import TypedDict
 
 if TYPE_CHECKING:
     from pyrogram.client import Client
@@ -70,7 +70,6 @@ class BotProtocol(Protocol):
     name: str
     client: "Client"
     bot_index: BotIndex
-    flood_wait_until: float
 
     async def start(self) -> None:
         """Starts the bot."""
