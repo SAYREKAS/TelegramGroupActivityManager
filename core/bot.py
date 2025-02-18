@@ -1,4 +1,4 @@
-"""Class to work with boots"""
+"""Class to work with bots"""
 
 import random
 import asyncio
@@ -102,3 +102,42 @@ class Bot(BotProtocol):
         except Exception as e:
             logger.error(f"Error getting chat prompt: {e}")
             raise
+
+    async def should_process_message(self, message: "Message") -> bool:
+        """
+        Checks if the message should be processed.
+
+        Args:
+            message (Message): The message to check.
+
+        Returns:
+            bool: True if the message should be processed, False otherwise.
+        """
+        try:
+            chat_id = message.chat.id
+            from_user = message.from_user.first_name
+
+            # Check flood control
+            can_send, remaining_time = self.bot_manager.can_send_message(chat_id)
+            if not can_send:
+                logger.debug(f"[{self.name}] Skipping message (flood control: {remaining_time:.1f}s remaining)")
+                return False
+
+            # If it's a reply to this bot's message
+            if self.client.me is None:
+                raise
+
+            if message.reply_to_message and message.reply_to_message.from_user.id == self.client.me.id:
+                logger.info(f"[{self.name}] Processing reply to own message from {from_user}")
+                logger.info(f"[{self.name}] User {from_user} replied to bot message: {message.text}")
+                return True
+
+            # If it's a message from another bot
+            if message.from_user.id in self.bot_manager.get_bot_ids():
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"[{self.name}] Error in should_process_message: {e}")
+            return False
