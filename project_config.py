@@ -45,6 +45,7 @@ class ChatBotConfig(BaseModel):
        - Varied in responses
        - Specific in examples
        - Open to discussion."""
+    TEST_MODE: bool = Field(default=False, description="Test mode")
 
 
 class Settings(BaseSettings):

@@ -92,13 +92,16 @@ class ChatBot:
             if message:
                 messages.append(ChatCompletionUserMessageParam(role="user", content=message))
 
+            if settings.chat_bot.TEST_MODE:
+                return "Test response message in test mode"
+
             response = self._get_response(messages)
             self.add_to_history(chat_id, response, is_user=False)
             return response
 
         except Exception as e:
             logger.error(f"Error generating response: {e}")
-            return ""
+            raise
 
     def generate_initial_message(self, prompt: str) -> str:
         """Generates the first message for initiating the conversation."""
@@ -123,6 +126,9 @@ class ChatBot:
             )
         ]
 
+        if settings.chat_bot.TEST_MODE:
+            return "Test initial message in test mode"
+
         try:
             response = self._get_response(messages)
             self.add_to_history(chat_id=0, message=response, is_user=False)
@@ -130,4 +136,4 @@ class ChatBot:
 
         except Exception as e:
             logger.error(f"Error generating initial message: {e}")
-            return ""
+            raise
