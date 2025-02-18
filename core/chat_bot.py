@@ -58,28 +58,31 @@ class ChatBot:
         reply_text: str | None = None,
     ) -> str:
         """Generates a response based on the prompt and message history."""
+        if settings.chat_bot.TEST_MODE:
+            return "Test response message in test mode"
+
+        messages: list[ChatCompletionMessageParam] = [
+            ChatCompletionSystemMessageParam(
+                role="system",
+                content=f"""
+                <role>
+                You are a participant in a group chat. 
+                </role>
+
+                <context>
+                The context of the group (for understanding the topic):
+                {prompt}
+                </context>
+
+                <rules>
+                Important communication rules:
+                {settings.chat_bot.GENERATE_RESPONSE_RULES}
+                </rules>
+                """,
+            )
+        ]
+
         try:
-            messages: list[ChatCompletionMessageParam] = [
-                ChatCompletionSystemMessageParam(
-                    role="system",
-                    content=f"""
-                    <role>
-                    You are a participant in a group chat. 
-                    </role>
-
-                    <context>
-                    The context of the group (for understanding the topic):
-                    {prompt}
-                    </context>
-
-                    <rules>
-                    Important communication rules:
-                    {settings.chat_bot.GENERATE_RESPONSE_RULES}
-                    </rules>
-                    """,
-                )
-            ]
-
             chat_history = self.message_history.get(chat_id, [])
             for msg in chat_history:
                 if msg.startswith("Assistant: "):
@@ -92,9 +95,6 @@ class ChatBot:
             if message:
                 messages.append(ChatCompletionUserMessageParam(role="user", content=message))
 
-            if settings.chat_bot.TEST_MODE:
-                return "Test response message in test mode"
-
             response = self._get_response(messages)
             self.add_to_history(chat_id, response, is_user=False)
             return response
@@ -105,6 +105,10 @@ class ChatBot:
 
     def generate_initial_message(self, prompt: str) -> str:
         """Generates the first message for initiating the conversation."""
+
+        if settings.chat_bot.TEST_MODE:
+            return "Test initial message in test mode"
+
         messages = [
             ChatCompletionSystemMessageParam(
                 role="system",
@@ -125,9 +129,6 @@ class ChatBot:
                 """,
             )
         ]
-
-        if settings.chat_bot.TEST_MODE:
-            return "Test initial message in test mode"
 
         try:
             response = self._get_response(messages)
