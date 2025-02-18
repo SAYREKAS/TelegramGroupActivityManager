@@ -1,16 +1,23 @@
 """Class to work with boots"""
 
+import random
+import asyncio
 from typing import TYPE_CHECKING
 
+from loguru import logger
 from pyrogram.client import Client
+from pyrogram import filters, enums
+from pyrogram.errors import FloodWait, UserAlreadyParticipant
 
 from core.chat_bot import ChatBot
-from core.managers.bot_manager import BotManager
 from core.project_types import BotProtocol
+from core.managers.bot_manager import BotManager
 from core.typing_simulator import TypingSimulator
+from core.managers.subscription_manager import SubscriptionManager
 
 if TYPE_CHECKING:
-    from core.schemas import TelegramBot
+    from pyrogram.types import Message, Dialog
+    from core.schemas import Channel, TelegramBot
 
 
 class Bot(BotProtocol):
@@ -46,3 +53,26 @@ class Bot(BotProtocol):
             return int(str_id[1:])  # Видаляємо мінус
 
         return chat_id
+
+    def get_chat_prompt(self, chat_id: int, channels: list["Channel"]) -> str:
+        """Gets a prompt for chat by his ID or name"""
+        try:
+            # normalize chat_id
+            normalized_id = self._normalize_chat_id(chat_id)
+
+            # Looking for chat in SubscriptionManager cache
+            for channel in channels:
+                cached_id = SubscriptionManager.chat_ids.get(channel.invite_link)
+
+                if cached_id:
+                    if self._normalize_chat_id(cached_id) == normalized_id:
+                        logger.debug(f"Found prompt for chat {chat_id} by ID")
+                        return channel.prompt
+
+            # If not found for ID, return the default industry
+            logger.warning(f"No specific prompt found for chat {chat_id}.")
+            raise
+
+        except Exception as e:
+            logger.error(f"Error getting chat prompt: {e}")
+            raise
