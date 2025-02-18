@@ -16,7 +16,7 @@ from core.typing_simulator import TypingSimulator
 from core.managers.subscription_manager import SubscriptionManager
 
 if TYPE_CHECKING:
-    from pyrogram.types import Message, Dialog
+    from pyrogram.types import Message
     from core.schemas import Channel, TelegramBot
 
 
@@ -24,6 +24,13 @@ class Bot(BotProtocol):
     """Class to work with a bot"""
 
     def __init__(self, name: str, bot_data: "TelegramBot"):
+        """
+        Initializes a new Bot instance.
+
+        Args:
+            name (str): The name of the bot.
+            bot_data (TelegramBot): The data of the bot.
+        """
         self.name = name
         self.client: Client = Client(
             name=name,
@@ -36,31 +43,50 @@ class Bot(BotProtocol):
         self.chat_bot = ChatBot()
         self.typing_simulator = TypingSimulator()
 
-        # Реєструємо бота в менеджері
+        # Register the bot in the manager
         self.bot_manager = BotManager()
         self.bot_index = self.bot_manager.register_bot(self)
 
     @staticmethod
     def _normalize_chat_id(chat_id: int) -> int:
-        """Normalizes Chat ID for internal use"""
+        """
+        Normalizes the chat ID for internal use.
 
+        Args:
+            chat_id (int): The chat ID to normalize.
+
+        Returns:
+            int: The normalized chat ID.
+        """
         str_id = str(chat_id)
 
         if str_id.startswith("-100"):
-            return int(str_id[4:])  # Видаляємо -100
+            return int(str_id[4:])  # Remove -100
 
         elif str_id.startswith("-"):
-            return int(str_id[1:])  # Видаляємо мінус
+            return int(str_id[1:])  # Remove minus
 
         return chat_id
 
     def get_chat_prompt(self, chat_id: int, channels: list["Channel"]) -> str:
-        """Gets a prompt for chat by his ID or name"""
+        """
+        Gets a prompt for the chat by its ID or name.
+
+        Args:
+            chat_id (int): The ID of the chat.
+            channels (list[Channel]): The list of channels.
+
+        Returns:
+            str: The prompt for the chat.
+
+        Raises:
+            Exception: If no specific prompt is found for the chat.
+        """
         try:
-            # normalize chat_id
+            # Normalize chat_id
             normalized_id = self._normalize_chat_id(chat_id)
 
-            # Looking for chat in SubscriptionManager cache
+            # Look for chat in SubscriptionManager cache
             for channel in channels:
                 cached_id = SubscriptionManager.chat_ids.get(channel.invite_link)
 
