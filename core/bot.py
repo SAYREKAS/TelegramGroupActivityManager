@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 from pyrogram import filters, enums
 from pyrogram.client import Client
+from pyrogram.types import Chat
 from pyrogram.errors import FloodWait, UserAlreadyParticipant
 
 from core.chat_bot import ChatBot
@@ -16,20 +17,20 @@ from core.project_types import BotProtocol
 from core.typing_simulator import TypingSimulator
 
 if TYPE_CHECKING:
-    from pyrogram.types import Message, Chat
+    from pyrogram.types import Message
     from core.schemas import Channel, TelegramBot
 
 
 class Bot(BotProtocol):
     """Class to work with a bot"""
 
-    def __init__(self, name: str, bot_data: TelegramBot):
+    def __init__(self, name: str, bot_data: "TelegramBot"):
         """
         Initializes a new Bot instance.
 
         Args:
             name (str): The name of the bot.
-            bot_data (TelegramBot): The data of the bot.
+            bot_data: The data of the bot.
         """
         self.name = name
         self.client: Client = Client(
@@ -68,7 +69,7 @@ class Bot(BotProtocol):
 
         return chat_id
 
-    def get_chat_prompt(self, chat_id: int, channels: list[Channel]) -> str:
+    def get_chat_prompt(self, chat_id: int, channels: list["Channel"]) -> str:
         """
         Gets a prompt for the chat by its ID or name.
 
@@ -103,7 +104,7 @@ class Bot(BotProtocol):
             logger.error(f"Error getting chat prompt: {e}")
             raise
 
-    async def should_process_message(self, message: Message) -> bool:
+    async def should_process_message(self, message: "Message") -> bool:
         """
         Checks if the message should be processed.
 
@@ -142,7 +143,7 @@ class Bot(BotProtocol):
             logger.error(f"[{self.name}] Error in should_process_message: {e}")
             return False
 
-    async def process_message(self, message: Message, channels: list[Channel]) -> None:
+    async def process_message(self, message: "Message", channels: list["Channel"]) -> None:
         """
         Processes the received message.
 
@@ -238,7 +239,7 @@ class Bot(BotProtocol):
             logger.error(f"Bot {self.name} failed to join chat: {str(e)}")
             return False
 
-    async def _generate_initial_message(self, chat_title: str, chat_id: int, channels: list[Channel]) -> str:
+    async def _generate_initial_message(self, chat_title: str, chat_id: int, channels: list["Channel"]) -> str:
         """
         Generates the initial message for the chat.
 
@@ -274,7 +275,7 @@ class Bot(BotProtocol):
         """
         max_retries = 5
         retry_delay = 10
-        channels: list[Channel] = []  # TODO: Get channels from somewhere
+        channels: list["Channel"] = []  # TODO: Get channels from somewhere
 
         for attempt in range(max_retries):
             try:
@@ -392,7 +393,7 @@ class Bot(BotProtocol):
         logger.info(f"Bot {self.name} started")
 
         @self.client.on_message(filters.text & filters.group)  # type: ignore
-        async def message_handler(message: Message, channels: list["Channel"]) -> None:
+        async def message_handler(message: "Message", channels: list["Channel"]) -> None:
             """
             Handles incoming messages.
 
