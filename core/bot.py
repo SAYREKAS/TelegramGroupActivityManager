@@ -81,7 +81,7 @@ class Bot(BotProtocol):
             str: The prompt for the chat.
 
         Raises:
-            Exception: If no specific prompt is found for the chat.
+            ValueError: If no specific prompt is found for the chat.
         """
         try:
             # Normalize chat_id
@@ -96,9 +96,8 @@ class Bot(BotProtocol):
                         logger.debug(f"Found prompt for chat {chat_id} by ID")
                         return channel.prompt
 
-            # If not found for ID, return the default industry
-            logger.warning(f"No specific prompt found for chat {chat_id}.")
-            raise
+            # If not found for ID, raise ValueError
+            raise ValueError(f"No prompt found for chat {chat_id}")
 
         except Exception as e:
             logger.error(f"Error getting chat prompt: {e}")
@@ -261,6 +260,10 @@ class Bot(BotProtocol):
             logger.debug(f"Generated initial message for chat {chat_title}: {message[:50]}...")
             return message
 
+        except ValueError as e:
+            logger.warning(f"Error generating initial message: {e}")
+            return "😂"
+
         except Exception as e:
             logger.error(f"Error generating initial message: {e}")
             return "I wonder what you think about the latest developments in this field?"
@@ -275,7 +278,7 @@ class Bot(BotProtocol):
         """
         max_retries = 5
         retry_delay = 10
-        channels: list["Channel"] = []  # TODO: Get channels from somewhere
+        channels = SubscriptionManager.get_channels()
 
         for attempt in range(max_retries):
             try:
@@ -393,18 +396,19 @@ class Bot(BotProtocol):
         logger.info(f"Bot {self.name} started")
 
         @self.client.on_message(filters.text & filters.group)  # type: ignore
-        async def message_handler(message: "Message", channels: list["Channel"]) -> None:
+        async def message_handler(client: Client, message: "Message") -> None:
             """
             Handles incoming messages.
 
             Args:
+                client: The client instance.
                 message: The received message.
-                channels: list of channels.
             """
             try:
                 if not await self.should_process_message(message):
                     return
 
+                channels = SubscriptionManager.get_channels()
                 await self.process_message(message=message, channels=channels)
                 self.bot_manager.reset_chat_history(message.chat.id)
 

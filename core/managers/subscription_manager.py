@@ -1,14 +1,15 @@
 """Manager for handling bot subscriptions to groups"""
 
-import os
-import json
 import asyncio
-from typing import TYPE_CHECKING, Sequence, Any
+import json
+import os
+from typing import TYPE_CHECKING, Sequence, Any, ClassVar
 
 from loguru import logger
 from pyrogram.errors import FloodWait
 
 from core.managers.chat_manager import ChatManager
+from core.schemas import Channel
 
 if TYPE_CHECKING:
     from pyrogram.client import Client
@@ -18,10 +19,10 @@ if TYPE_CHECKING:
 class SubscriptionManager:
     """Manager for handling bot subscriptions to groups"""
 
-    _subscribed_bots: dict[int, set[int]] = {}
-    _cache_file = "chat_ids_cache.json"
-
-    chat_ids: dict[str, int] = {}
+    _subscribed_bots: ClassVar[dict[int, set[int]]] = {}
+    _cache_file: ClassVar[str] = "chat_ids_cache.json"
+    _channels: ClassVar[list["Channel"]] = []
+    chat_ids: ClassVar[dict[str, int]] = {}
 
     @classmethod
     async def get_chat_id_from_invite(cls, client: "Client", invite_link: str, bot_name: str = "Unknown") -> int | None:
@@ -181,3 +182,23 @@ class SubscriptionManager:
 
         except Exception as e:
             logger.error(f"Error saving cache: {e}")
+
+    @classmethod
+    def initialize_channels(cls, channels: list["Channel"]) -> None:
+        """
+        Initializes the channels list.
+
+        Args:
+            channels: List of channels to initialize with.
+        """
+        cls._channels = channels
+
+    @classmethod
+    def get_channels(cls) -> list["Channel"]:
+        """
+        Gets the list of channels.
+
+        Returns:
+            list[Channel]: List of channels.
+        """
+        return cls._channels
