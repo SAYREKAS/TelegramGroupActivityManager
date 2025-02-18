@@ -1,29 +1,29 @@
 """Class to work with bots"""
 
-import random
 import asyncio
+import random
 from typing import TYPE_CHECKING
 
 from loguru import logger
-from pyrogram.client import Client
 from pyrogram import filters, enums
+from pyrogram.client import Client
 from pyrogram.errors import FloodWait, UserAlreadyParticipant
 
 from core.chat_bot import ChatBot
-from core.project_types import BotProtocol
 from core.managers.bot_manager import BotManager
-from core.typing_simulator import TypingSimulator
 from core.managers.subscription_manager import SubscriptionManager
+from core.project_types import BotProtocol
+from core.typing_simulator import TypingSimulator
 
 if TYPE_CHECKING:
-    from pyrogram.types import Message
+    from pyrogram.types import Message, Chat
     from core.schemas import Channel, TelegramBot
 
 
 class Bot(BotProtocol):
     """Class to work with a bot"""
 
-    def __init__(self, name: str, bot_data: "TelegramBot"):
+    def __init__(self, name: str, bot_data: TelegramBot):
         """
         Initializes a new Bot instance.
 
@@ -68,7 +68,7 @@ class Bot(BotProtocol):
 
         return chat_id
 
-    def get_chat_prompt(self, chat_id: int, channels: list["Channel"]) -> str:
+    def get_chat_prompt(self, chat_id: int, channels: list[Channel]) -> str:
         """
         Gets a prompt for the chat by its ID or name.
 
@@ -103,7 +103,7 @@ class Bot(BotProtocol):
             logger.error(f"Error getting chat prompt: {e}")
             raise
 
-    async def should_process_message(self, message: "Message") -> bool:
+    async def should_process_message(self, message: Message) -> bool:
         """
         Checks if the message should be processed.
 
@@ -142,7 +142,7 @@ class Bot(BotProtocol):
             logger.error(f"[{self.name}] Error in should_process_message: {e}")
             return False
 
-    async def process_message(self, message: "Message", channels: list["Channel"]) -> None:
+    async def process_message(self, message: Message, channels: list[Channel]) -> None:
         """
         Processes the received message.
 
@@ -185,7 +185,8 @@ class Bot(BotProtocol):
 
             # Send the response
             if reply_to_message_id is None:
-                raise
+                logger.warning(f"[{self.name}] No message to reply to in chat {chat_id}")
+                return
 
             await self.client.send_message(chat_id=chat_id, text=response, reply_to_message_id=reply_to_message_id)
             logger.info(f"[{self.name}] Sent reply in chat {chat_id}")
@@ -237,7 +238,7 @@ class Bot(BotProtocol):
             logger.error(f"Bot {self.name} failed to join chat: {str(e)}")
             return False
 
-    async def _generate_initial_message(self, chat_title: str, chat_id: int, channels: list["Channel"]) -> str:
+    async def _generate_initial_message(self, chat_title: str, chat_id: int, channels: list[Channel]) -> str:
         """
         Generates the initial message for the chat.
 
@@ -263,7 +264,7 @@ class Bot(BotProtocol):
             logger.error(f"Error generating initial message: {e}")
             return "I wonder what you think about the latest developments in this field?"
 
-    async def send_initial_message(self, chat_id: int, invite_link: str, channels: list["Channel"]) -> None:
+    async def send_initial_message(self, chat_id: int, invite_link: str) -> None:
         """
         Sends the initial message to the chat.
 
@@ -273,30 +274,31 @@ class Bot(BotProtocol):
         """
         max_retries = 5
         retry_delay = 10
+        channels: list[Channel] = []  # TODO: Get channels from somewhere
 
         for attempt in range(max_retries):
             try:
                 # Check access to the chat
                 try:
-                    chat = await self.client.get_chat(chat_id)
+                    current_chat = await self.client.get_chat(chat_id)
                     logger.debug(f"[{self.name}] Already in chat {chat_id}")
 
                 except Exception:
                     try:
-                        chat = await self.client.get_chat(invite_link)
+                        current_chat = await self.client.get_chat(invite_link)
                         logger.debug(f"[{self.name}] Got chat info via invite link")
 
                     except Exception:
                         await self.client.join_chat(invite_link)
                         await asyncio.sleep(1)
-                        chat = await self.client.get_chat(chat_id)
+                        current_chat = await self.client.get_chat(chat_id)
                         logger.info(f"[{self.name}] Joined chat {chat_id}")
 
                 await asyncio.sleep(retry_delay)
 
                 # Generate and send the message
                 message = await self._generate_initial_message(
-                    chat_title=chat.title,
+                    chat_title=current_chat.title,
                     chat_id=chat_id,
                     channels=channels,
                 )
@@ -328,12 +330,12 @@ class Bot(BotProtocol):
             int: The ID of the chat.
 
         Raises:
-            Exception: If failed to get the chat ID.
+            ValueError: If could not find chat for the invite link.
         """
         try:
             # Join the chat or get information if already a participant
-            chat = await self.client.join_chat(invite_link)
-            chat_id = chat.id
+            joined_chat = await self.client.join_chat(invite_link)
+            chat_id = joined_chat.id
 
             logger.info(f"Got chat ID {chat_id} from invite link {invite_link}")
             return chat_id
@@ -341,12 +343,14 @@ class Bot(BotProtocol):
         except UserAlreadyParticipant:
             try:
                 # If already in the group, try to get information via get_chat
-                # Extract the hash from invite_link
-                # Try to get chat information via invite_link
-                chat = await self.client.get_chat(chat_id=invite_link)
-                chat_id = chat.id
-                logger.info(f"Got chat ID {chat_id} for existing participant")
-                return chat_id
+                chat_result = await self.client.get_chat(chat_id=invite_link)
+
+                if isinstance(chat_result, Chat):
+                    chat_id = chat_result.id
+                    logger.info(f"Got chat ID {chat_id} for existing participant")
+                    return chat_id
+                else:
+                    raise ValueError("Received ChatPreview instead of Chat")
 
             except Exception as e:
                 logger.error(f"Error getting chat ID for existing participant: {e}")
@@ -354,14 +358,12 @@ class Bot(BotProtocol):
 
                 try:
                     # Try to get the list of chats and find the needed one
-                    dialogs = await self.client.get_dialogs()
-                    if dialogs is None:
-                        raise
+                    dialogs = self.client.get_dialogs()
+                    if not dialogs:
+                        raise ValueError("Could not get dialogs")
 
-                    for dialog in dialogs:
+                    async for dialog in dialogs:
                         if dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-                            # Check if it's our chat
-
                             try:
                                 invite = await self.client.get_chat_invite_link(
                                     chat_id=dialog.chat.id,
@@ -376,8 +378,9 @@ class Bot(BotProtocol):
 
                 except Exception as e:
                     logger.error(f"Error searching for chat in dialogs: {e}")
+                    raise
 
-                raise
+                raise ValueError(f"Could not find chat for invite link {invite_link}")
 
         except Exception as e:
             logger.error(f"Error getting chat ID from invite link: {e}")
@@ -389,7 +392,7 @@ class Bot(BotProtocol):
         logger.info(f"Bot {self.name} started")
 
         @self.client.on_message(filters.text & filters.group)  # type: ignore
-        async def message_handler(message: "Message", channels: list["Channel"]) -> None:
+        async def message_handler(message: Message, channels: list["Channel"]) -> None:
             """
             Handles incoming messages.
 
