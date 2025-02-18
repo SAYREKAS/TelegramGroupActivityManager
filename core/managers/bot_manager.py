@@ -136,12 +136,6 @@ class BotManager:
         )
 
     @classmethod
-    def can_bot_reply(cls) -> bool:
-        """Checks if the bot can reply to a message"""
-        # Bots can always reply
-        return True
-
-    @classmethod
     def reset_chat_history(cls, chat_id: "ChatID") -> None:
         """Resets the message history for a chat"""
 
@@ -150,12 +144,6 @@ class BotManager:
         if len(authors) >= 2 or len(authors) >= cls._total_bots - 1:
             cls._last_message_authors[chat_id] = set()
             logger.debug(f"Reset chat history for chat {chat_id}")
-
-    @classmethod
-    def should_reply_to_bot(cls) -> bool:
-        """Checks if the bot should reply to another bot's message"""
-        # Bots should always maintain the conversation
-        return True
 
     @classmethod
     def get_bots(cls) -> dict[str, "BotProtocol"]:
