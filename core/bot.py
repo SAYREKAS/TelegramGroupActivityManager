@@ -141,3 +141,268 @@ class Bot(BotProtocol):
         except Exception as e:
             logger.error(f"[{self.name}] Error in should_process_message: {e}")
             return False
+
+    async def process_message(self, message: "Message", channels: list["Channel"]) -> None:
+        """
+        Processes the received message.
+
+        Args:
+            message (Message): The message to process.
+            channels (list[Channel]): The list of channels.
+        """
+        try:
+            chat_id = message.chat.id
+            logger.info(f"[{self.name}] Processing message in chat {chat_id}")
+
+            # Get prompt for the chat
+            prompt = self.get_chat_prompt(chat_id=chat_id, channels=channels)
+            if not prompt:
+                return
+
+            # Get the text of the message being replied to
+            reply_to_message_id = message.id if message.text else None
+
+            # Generate a response
+            response = self.chat_bot.generate_response(
+                chat_id=chat_id,
+                prompt=prompt,
+                message=message.text if message.text else None,
+                is_reply=True if message.reply_to_message else False,
+                reply_text=message.reply_to_message.text if message.reply_to_message else None,
+            )
+
+            # Wait a random time before starting to type
+            wait_time = random.uniform(0.5, 3.0)
+            logger.debug(f"[{self.name}] Waiting {wait_time:.1f}s before typing")
+            await asyncio.sleep(wait_time)
+
+            # Simulate typing
+            typing_time = len(response) / 20  # Approximately 20 characters per second
+            logger.debug(f"[{self.name}] Typing for {typing_time:.1f}s")
+            await self.client.send_chat_action(chat_id, enums.ChatAction.TYPING)
+            await asyncio.sleep(typing_time)
+            await self.client.send_chat_action(chat_id, enums.ChatAction.CANCEL)
+
+            # Send the response
+            if reply_to_message_id is None:
+                raise
+
+            await self.client.send_message(chat_id=chat_id, text=response, reply_to_message_id=reply_to_message_id)
+            logger.info(f"[{self.name}] Sent reply in chat {chat_id}")
+
+            # Mark that the bot has replied to the message
+            if message.id:
+                self.bot_manager.mark_bot_replied(
+                    self.bot_index,
+                    chat_id,
+                    message.id,
+                    message.reply_to_message.id if message.reply_to_message else message.id,
+                )
+                logger.debug(f"[{self.name}] Marked as replied in chat {chat_id}")
+
+        except Exception as e:
+            logger.error(f"Error processing message: {e}")
+
+    async def join_chat(self, chat_id: int, invite_link: str) -> bool:
+        """
+        Joins the chat if not already a participant.
+
+        Args:
+            chat_id (int): The ID of the chat.
+            invite_link (str): The invite link of the chat.
+
+        Returns:
+            bool: True if the bot successfully joined the chat or is already a participant, False otherwise.
+        """
+        try:
+            # First, try to join via invite_link
+            try:
+                chat = await self.client.join_chat(invite_link)
+                logger.info(f"Bot {self.name} joined chat {chat.id}")
+                return True
+            except UserAlreadyParticipant:
+                # If already in the group, just return success
+                logger.info(f"Bot {self.name} already in chat")
+                return True
+            except Exception:
+                # Try to join via chat_id
+                try:
+                    await self.client.get_chat(chat_id)
+                    logger.info(f"Bot {self.name} accessed chat {chat_id}")
+                    return True
+                except Exception as inner_e:
+                    logger.error(f"Bot {self.name} failed to access chat: {inner_e}")
+                    return False
+        except Exception as e:
+            logger.error(f"Bot {self.name} failed to join chat: {str(e)}")
+            return False
+
+    async def _generate_initial_message(self, chat_title: str, chat_id: int, channels: list["Channel"]) -> str:
+        """
+        Generates the initial message for the chat.
+
+        Args:
+            chat_title (str): The title of the chat.
+            chat_id (int): The ID of the chat.
+            channels (list[Channel]): The list of channels.
+
+        Returns:
+            str: The generated initial message.
+        """
+        try:
+            # Get prompt for the chat
+            prompt = self.get_chat_prompt(chat_id=chat_id, channels=channels)
+            logger.debug(f"Using prompt for chat {chat_title} (ID: {chat_id}): {prompt[:50]}...")
+
+            # Use ChatBot to generate the message
+            message = self.chat_bot.generate_initial_message(prompt=prompt)
+            logger.debug(f"Generated initial message for chat {chat_title}: {message[:50]}...")
+            return message
+
+        except Exception as e:
+            logger.error(f"Error generating initial message: {e}")
+            return "I wonder what you think about the latest developments in this field?"
+
+    async def send_initial_message(self, chat_id: int, invite_link: str, channels: list["Channel"]) -> None:
+        """
+        Sends the initial message to the chat.
+
+        Args:
+            chat_id (int): The ID of the chat.
+            invite_link (str): The invite link of the chat.
+        """
+        max_retries = 5
+        retry_delay = 10
+
+        for attempt in range(max_retries):
+            try:
+                # Check access to the chat
+                try:
+                    chat = await self.client.get_chat(chat_id)
+                    logger.debug(f"[{self.name}] Already in chat {chat_id}")
+
+                except Exception:
+                    try:
+                        chat = await self.client.get_chat(invite_link)
+                        logger.debug(f"[{self.name}] Got chat info via invite link")
+
+                    except Exception:
+                        await self.client.join_chat(invite_link)
+                        await asyncio.sleep(1)
+                        chat = await self.client.get_chat(chat_id)
+                        logger.info(f"[{self.name}] Joined chat {chat_id}")
+
+                await asyncio.sleep(retry_delay)
+
+                # Generate and send the message
+                message = await self._generate_initial_message(
+                    chat_title=chat.title,
+                    chat_id=chat_id,
+                    channels=channels,
+                )
+
+                await self.typing_simulator.simulate_typing(self.client, chat_id, len(message))
+                await self.client.send_message(chat_id=chat_id, text=message, disable_web_page_preview=True)
+                logger.info(f"[{self.name}] Sent initial message to chat {chat_id}")
+                return
+
+            except FloodWait:
+                raise
+
+            except Exception as e:
+                logger.warning(f"[{self.name}] Attempt {attempt + 1}/{max_retries} failed: {str(e)}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                else:
+                    logger.error(f"[{self.name}] Failed to send initial message after {max_retries} attempts")
+                    raise
+
+    async def get_chat_id_from_invite(self, invite_link: str) -> int:
+        """
+        Gets the chat ID from the invite link.
+
+        Args:
+            invite_link (str): The invite link of the chat.
+
+        Returns:
+            int: The ID of the chat.
+
+        Raises:
+            Exception: If failed to get the chat ID.
+        """
+        try:
+            # Join the chat or get information if already a participant
+            chat = await self.client.join_chat(invite_link)
+            chat_id = chat.id
+
+            logger.info(f"Got chat ID {chat_id} from invite link {invite_link}")
+            return chat_id
+
+        except UserAlreadyParticipant:
+            try:
+                # If already in the group, try to get information via get_chat
+                # Extract the hash from invite_link
+                # Try to get chat information via invite_link
+                chat = await self.client.get_chat(chat_id=invite_link)
+                chat_id = chat.id
+                logger.info(f"Got chat ID {chat_id} for existing participant")
+                return chat_id
+
+            except Exception as e:
+                logger.error(f"Error getting chat ID for existing participant: {e}")
+                # Try an alternative method
+
+                try:
+                    # Try to get the list of chats and find the needed one
+                    dialogs = await self.client.get_dialogs()
+                    if dialogs is None:
+                        raise
+
+                    for dialog in dialogs:
+                        if dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
+                            # Check if it's our chat
+
+                            try:
+                                invite = await self.client.get_chat_invite_link(
+                                    chat_id=dialog.chat.id,
+                                    invite_link=invite_link,
+                                )
+                                if invite.invite_link == invite_link:
+                                    logger.info(f"Found chat ID {dialog.chat.id} in dialogs")
+                                    return dialog.chat.id
+
+                            except Exception:
+                                continue
+
+                except Exception as e:
+                    logger.error(f"Error searching for chat in dialogs: {e}")
+
+                raise
+
+        except Exception as e:
+            logger.error(f"Error getting chat ID from invite link: {e}")
+            raise
+
+    async def start(self) -> None:
+        """Starts the bot."""
+        await self.client.start()
+        logger.info(f"Bot {self.name} started")
+
+        @self.client.on_message(filters.text & filters.group)  # type: ignore
+        async def message_handler(message: "Message", channels: list["Channel"]) -> None:
+            """
+            Handles incoming messages.
+
+            Args:
+                message: The received message.
+                channels: list of channels.
+            """
+            try:
+                if not await self.should_process_message(message):
+                    return
+
+                await self.process_message(message=message, channels=channels)
+                self.bot_manager.reset_chat_history(message.chat.id)
+
+            except Exception as e:
+                logger.error(f"Error in message handler: {e}")
