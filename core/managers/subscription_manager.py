@@ -109,7 +109,7 @@ class SubscriptionManager:
             try:
                 normalized_id = ChatManager.normalize_chat_id(chat_id)
                 await bot.client.get_chat(normalized_id)
-                
+
                 if chat_id not in cls._subscribed_bots:
                     cls._subscribed_bots[chat_id] = set()
 

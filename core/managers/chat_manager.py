@@ -10,17 +10,11 @@ This module provides functionality for:
 from typing import TYPE_CHECKING
 
 from loguru import logger
-from pyrogram.errors import (
-    UserAlreadyParticipant,
-    FloodWait,
-    InviteHashExpired,
-    ChatAdminRequired,
-    ChannelPrivate,
-    PeerIdInvalid,
-)
+from pyrogram.errors import UserAlreadyParticipant, FloodWait
+from pyrogram.types import Chat
 
 if TYPE_CHECKING:
-    from pyrogram import Client  # type: ignore
+    from pyrogram.client import Client
 
 
 class ChatManager:
@@ -64,9 +58,11 @@ class ChatManager:
                 # Спочатку спробуємо отримати чат напряму
                 try:
                     chat = await client.get_chat(full_link)
-                    chat_id = int(chat.id)
-                    logger.info(f"Bot {bot_name} got chat ID {chat_id} directly")
-                    return chat_id
+                    # Перевіряємо, що це Chat, а не ChatPreview
+                    if isinstance(chat, Chat):
+                        chat_id = int(chat.id)
+                        logger.info(f"Bot {bot_name} got chat ID {chat_id} directly")
+                        return chat_id
                 except Exception:
                     pass
 
@@ -76,10 +72,11 @@ class ChatManager:
                 except UserAlreadyParticipant:
                     # Якщо вже учасник, отримуємо інформацію про чат
                     chat = await client.get_chat(full_link)
-                
-                if isinstance(chat.id, dict):
-                    raise TypeError("Chat ID is a dictionary instead of an integer")
-                    
+
+                # Перевіряємо, що це Chat, а не ChatPreview
+                if not isinstance(chat, Chat):
+                    raise TypeError("Got ChatPreview instead of Chat")
+
                 chat_id = int(chat.id)
                 logger.info(f"Bot {bot_name} got chat ID {chat_id} from invite link")
                 return chat_id

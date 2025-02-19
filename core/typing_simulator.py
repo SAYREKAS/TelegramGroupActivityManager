@@ -32,7 +32,7 @@ class TypingSimulator:
             typing_duration = await self.calculate_typing_duration(
                 text_length=text_length,
                 typing_speed=self.typing_speed,
-                max_time=self.max_typing_time
+                max_time=self.max_typing_time,
             )
 
             await client.send_chat_action(chat_id, enums.ChatAction.TYPING)
