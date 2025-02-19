@@ -7,7 +7,7 @@ from asyncio import Task
 from typing import TYPE_CHECKING, Sequence, ClassVar
 
 from loguru import logger
-from pyrogram.errors import FloodWait
+from pyrogram.errors import FloodWait, PeerIdInvalid
 
 from core.managers.chat_manager import ChatManager
 
@@ -85,27 +85,43 @@ class SubscriptionManager:
 
     @classmethod
     async def check_subscription(cls, bot: "BotProtocol", chat_id: int) -> bool:
-        """
-        Checks if a bot is subscribed to a channel and updates the cache.
-
-        Args:
-            bot: The bot to check.
-            chat_id: The ID of the chat.
-
-        Returns:
-            bool: True if subscribed, False otherwise.
-        """
+        """Checks if a bot is subscribed to a channel."""
         try:
-            await bot.client.get_chat(chat_id)
-            if chat_id not in cls._subscribed_bots:
-                cls._subscribed_bots[chat_id] = set()
+            # Спочатку спробуємо отримати чат через invite_link
+            for channel in cls._channels:
+                if cls.chat_ids.get(channel.invite_link) == chat_id:
+                    try:
+                        chat = await bot.client.get_chat(channel.invite_link)
+                        if chat:
+                            if chat_id not in cls._subscribed_bots:
+                                cls._subscribed_bots[chat_id] = set()
 
-            api_id = bot.client.api_id
-            if api_id is not None:
-                cls._subscribed_bots[chat_id].add(api_id)
-                cls.save_cache()
-                logger.info(f"Bot {bot.name} (API ID: {api_id}) already has access to chat {chat_id}")
-                return True
+                            api_id = bot.client.api_id
+                            if api_id is not None:
+                                cls._subscribed_bots[chat_id].add(api_id)
+                                cls.save_cache()
+                                logger.info(f"Bot {bot.name} (API ID: {api_id}) already has access to chat {chat_id}")
+                                return True
+                    except Exception:
+                        continue
+
+            # Якщо не вдалося через invite_link, спробуємо через normalized_id
+            try:
+                normalized_id = ChatManager.normalize_chat_id(chat_id)
+                await bot.client.get_chat(normalized_id)
+                
+                if chat_id not in cls._subscribed_bots:
+                    cls._subscribed_bots[chat_id] = set()
+
+                api_id = bot.client.api_id
+                if api_id is not None:
+                    cls._subscribed_bots[chat_id].add(api_id)
+                    cls.save_cache()
+                    logger.info(f"Bot {bot.name} (API ID: {api_id}) already has access to chat {chat_id}")
+                    return True
+
+            except (ValueError, AttributeError, PeerIdInvalid) as e:
+                logger.debug(f"Could not access chat {chat_id} directly: {e}")
 
             return False
 
@@ -113,16 +129,8 @@ class SubscriptionManager:
             logger.warning(f"Bot {bot.name} got FloodWait in check_subscription: {e.value} seconds")
             raise
 
-        except (ValueError, AttributeError) as e:
-            logger.error(f"Invalid bot configuration for {bot.name}: {e}")
-            return False
-
-        except ConnectionError as e:
-            logger.warning(f"Connection error for bot {bot.name}: {e}")
-            return False
-
         except Exception as e:
-            logger.error(f"Unexpected error checking subscription for bot {bot.name}: {e}")
+            logger.error(f"Unexpected error checking subscription for {bot.name}: {e}")
             return False
 
     @classmethod
@@ -274,3 +282,9 @@ class SubscriptionManager:
             list[Channel]: List of channels.
         """
         return cls._channels
+
+    @classmethod
+    def set_channels(cls, channels: list["Channel"]) -> None:
+        """Sets the list of channels."""
+        cls._channels = channels
+        logger.info(f"Set {len(channels)} channels in SubscriptionManager")

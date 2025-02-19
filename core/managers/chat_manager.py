@@ -53,25 +53,47 @@ class ChatManager:
         # By default, add the protocol
         return f"https://t.me/{invite_link}"
 
-    @staticmethod
-    async def get_chat_id_from_invite(client: "Client", invite_link: str, bot_name: str = "Unknown") -> int:
-        """Gets the chat ID from an invite link"""
+    @classmethod
+    async def get_chat_id_from_invite(cls, client: "Client", invite_link: str, bot_name: str) -> int:
+        """Gets the chat ID from an invite link."""
         try:
-            full_link = ChatManager.parse_invite_link(invite_link)
-            logger.debug(f"Bot {bot_name} getting chat ID for link: {full_link}")
+            logger.debug(f"Bot {bot_name} getting chat ID for link: {invite_link}")
+            full_link = cls.parse_invite_link(invite_link)
 
             try:
-                chat = await client.join_chat(full_link)
-                logger.success(f"Bot {bot_name} got chat ID {chat.id} from invite link {invite_link}")
-                return chat.id
+                # Спочатку спробуємо отримати чат напряму
+                try:
+                    chat = await client.get_chat(full_link)
+                    chat_id = int(chat.id)
+                    logger.info(f"Bot {bot_name} got chat ID {chat_id} directly")
+                    return chat_id
+                except Exception:
+                    pass
 
-            except UserAlreadyParticipant:
-                chat = await client.get_chat(full_link)  # type: ignore
-                logger.info(f"Bot {bot_name} already in chat, got ID {chat.id}")
-                return chat.id
+                # Якщо не вдалося, пробуємо приєднатися
+                try:
+                    chat = await client.join_chat(full_link)
+                except UserAlreadyParticipant:
+                    # Якщо вже учасник, отримуємо інформацію про чат
+                    chat = await client.get_chat(full_link)
+                
+                if isinstance(chat.id, dict):
+                    raise TypeError("Chat ID is a dictionary instead of an integer")
+                    
+                chat_id = int(chat.id)
+                logger.info(f"Bot {bot_name} got chat ID {chat_id} from invite link")
+                return chat_id
 
             except FloodWait as e:
                 logger.warning(f"Bot {bot_name} got FloodWait for {e.value} seconds")
+                raise
+
+            except (ValueError, TypeError) as e:
+                logger.error(f"Bot {bot_name} received invalid chat ID format: {e}")
+                raise TypeError(f"Invalid chat ID format: {e}")
+
+            except Exception as e:
+                logger.error(f"Bot {bot_name} failed to get chat ID from invite link: {e}")
                 raise
 
         except Exception as e:
@@ -79,48 +101,48 @@ class ChatManager:
             raise
 
     @staticmethod
+    def normalize_chat_id(chat_id: int) -> int:
+        """Normalizes chat ID for Telegram API."""
+        str_id = str(chat_id)
+        if str_id.startswith("-100"):
+            return int(str_id[4:])
+        if str_id.startswith("-"):
+            return int(str_id[1:])
+        return chat_id
+
+    @staticmethod
     async def join_chat(client: "Client", chat_id: int, invite_link: str, bot_name: str) -> bool:
-        """Joins a bot to a chat.
-
-        Args:
-            client: Telegram client
-            chat_id: Chat ID
-            invite_link: Invite link
-            bot_name: Bot name for logging.
-
-        Returns:
-            bool: True if successfully joined or already a participant
-        """
+        """Joins a bot to a chat."""
         try:
             logger.debug(f"Trying to join chat with link: {invite_link}")
 
+            # Спочатку спробуємо через invite_link
             try:
-                await client.get_chat(chat_id)
-                logger.info(f"Bot {bot_name} already in chat")
+                await client.join_chat(invite_link)
+                logger.debug(f"Bot {bot_name} successfully joined chat via invite link")
                 return True
-            except (PeerIdInvalid, ChannelPrivate):
-                pass
+            except UserAlreadyParticipant:
+                logger.info(f"Bot {bot_name} already participant in chat {chat_id}")
+                return True
+            except Exception as e:
+                logger.debug(f"Could not join via invite link: {e}")
 
-            # Try to join via invite
-            await client.join_chat(invite_link)
-            logger.debug(f"Bot {bot_name} successfully joined chat {chat_id}")
-            return True
+            # Якщо не вдалося, спробуємо через chat_id
+            try:
+                normalized_id = ChatManager.normalize_chat_id(chat_id)
+                await client.get_chat(normalized_id)
+                logger.info(f"Bot {bot_name} already has access to chat {chat_id}")
+                return True
+            except Exception as e:
+                logger.debug(f"Could not access chat directly: {e}")
+
+            # Якщо обидва методи не спрацювали
+            logger.error(f"Bot {bot_name} could not access chat {chat_id} via any method")
+            return False
 
         except FloodWait as e:
             logger.warning(f"Bot {bot_name} got FloodWait for {e.value} seconds")
             raise
-
-        except InviteHashExpired:
-            logger.error(f"Invite link expired for chat {chat_id}")
-            raise
-
-        except UserAlreadyParticipant:
-            logger.info(f"Bot {bot_name} already participant in chat {chat_id}")
-            return True
-
-        except ChatAdminRequired:
-            logger.error(f"Bot {bot_name} needs admin rights to join chat {chat_id}")
-            return False
 
         except Exception as e:
             logger.error(f"Bot {bot_name} failed to access chat: {e}")

@@ -1,13 +1,13 @@
 """Class to work with bots"""
 
-import asyncio
 import random
-from typing import TYPE_CHECKING
+import asyncio
+from typing import TYPE_CHECKING, Optional
 
 from loguru import logger
-from pyrogram import filters, enums
+from pyrogram import filters
 from pyrogram.client import Client
-from pyrogram.types import Chat
+from pyrogram.types import Chat, ChatPreview
 from pyrogram.errors import FloodWait, UserAlreadyParticipant
 
 from core.chat_bot import ChatBot
@@ -21,10 +21,22 @@ if TYPE_CHECKING:
     from core.schemas import Channel, TelegramBot
 
 
+class BotError(Exception):
+    """Base exception for Bot errors."""
+
+
+class ChatAccessError(BotError):
+    """Raised when there's an error accessing a chat."""
+
+
+class MessageProcessingError(BotError):
+    """Raised when there's an error processing a message."""
+
+
 class Bot(BotProtocol):
     """Class to work with a bot"""
 
-    def __init__(self, name: str, bot_data: "TelegramBot"):
+    def __init__(self, name: str, bot_data: "TelegramBot") -> None:
         """
         Initializes a new Bot instance.
 
@@ -32,21 +44,26 @@ class Bot(BotProtocol):
             name (str): The name of the bot.
             bot_data: The data of the bot.
         """
-        self.name = name
-        self.client: Client = Client(
-            name=name,
-            api_id=bot_data.api_id,
-            api_hash=bot_data.api_hash,
-            session_string=bot_data.session,
-            in_memory=True,
-        )
+        try:
+            self.name = name
+            self.client = Client(
+                name=name,
+                api_id=bot_data.api_id,
+                api_hash=bot_data.api_hash,
+                session_string=bot_data.session,
+                in_memory=True,
+            )
 
-        self.chat_bot = ChatBot()
-        self.typing_simulator = TypingSimulator()
+            self.chat_bot = ChatBot()
+            self.typing_simulator = TypingSimulator()
 
-        # Register the bot in the manager
-        self.bot_manager = BotManager()
-        self.bot_index = self.bot_manager.register_bot(self)
+            # Register the bot in the manager
+            self.bot_manager = BotManager()
+            self.bot_index = self.bot_manager.register_bot(self)
+
+        except Exception as e:
+            logger.error(f"Failed to initialize bot {name}: {e}")
+            raise BotError(f"Bot initialization failed: {e}") from e
 
     @staticmethod
     def _normalize_chat_id(chat_id: int) -> int:
@@ -70,19 +87,7 @@ class Bot(BotProtocol):
         return chat_id
 
     def get_chat_prompt(self, chat_id: int, channels: list["Channel"]) -> str:
-        """
-        Gets a prompt for the chat by its ID or name.
-
-        Args:
-            chat_id (int): The ID of the chat.
-            channels (list[Channel]): The list of channels.
-
-        Returns:
-            str: The prompt for the chat.
-
-        Raises:
-            ValueError: If no specific prompt is found for the chat.
-        """
+        """Gets a prompt for the chat by its ID."""
         try:
             # Normalize chat_id
             normalized_id = self._normalize_chat_id(chat_id)
@@ -90,57 +95,67 @@ class Bot(BotProtocol):
             # Look for chat in SubscriptionManager cache
             for channel in channels:
                 cached_id = SubscriptionManager.chat_ids.get(channel.invite_link)
-
                 if cached_id:
-                    if self._normalize_chat_id(cached_id) == normalized_id:
+                    cached_normalized_id = self._normalize_chat_id(cached_id)
+                    if cached_normalized_id == normalized_id:
                         logger.debug(f"Found prompt for chat {chat_id} by ID")
                         return channel.prompt
 
-            # If not found for ID, raise ValueError
+            # Try to find by invite link
+            for channel in channels:
+                if channel.invite_link in SubscriptionManager.chat_ids:
+                    if SubscriptionManager.chat_ids[channel.invite_link] == chat_id:
+                        logger.debug(f"Found prompt for chat {chat_id} by invite link")
+                        return channel.prompt
+
             raise ValueError(f"No prompt found for chat {chat_id}")
 
         except Exception as e:
             logger.error(f"Error getting chat prompt: {e}")
             raise
 
-    async def should_process_message(self, message: "Message") -> bool:
-        """
-        Checks if the message should be processed.
-
-        Args:
-            message (Message): The message to check.
-
-        Returns:
-            bool: True if the message should be processed, False otherwise.
-        """
-        try:
-            chat_id = message.chat.id
-            from_user = message.from_user.first_name
-
-            # Check flood control
-            can_send, remaining_time = self.bot_manager.can_send_message(chat_id)
-            if not can_send:
-                logger.debug(f"[{self.name}] Skipping message (flood control: {remaining_time:.1f}s remaining)")
-                return False
-
-            # If it's a reply to this bot's message
-            if self.client.me is None:
-                raise
-
-            if message.reply_to_message and message.reply_to_message.from_user.id == self.client.me.id:
-                logger.info(f"[{self.name}] Processing reply to own message from {from_user}")
-                logger.info(f"[{self.name}] User {from_user} replied to bot message: {message.text}")
-                return True
-
-            # If it's a message from another bot
-            if message.from_user.id in self.bot_manager.get_bot_ids():
-                return True
-
+    async def _check_message_conditions(self, message: "Message") -> bool:
+        """Check if the message meets processing conditions."""
+        if not message.from_user or not message.chat:
             return False
 
-        except Exception as e:
-            logger.error(f"[{self.name}] Error in should_process_message: {e}")
+        chat_id = message.chat.id
+        from_user = message.from_user.first_name
+
+        # Check flood control
+        can_send, remaining_time = self.bot_manager.can_send_message(chat_id)
+        if not can_send:
+            logger.debug(f"[{self.name}] Skipping message (flood control: {remaining_time:.1f}s remaining)")
             return False
+
+        # Check if it's a reply to this bot's message
+        if not self.client.me:
+            return False
+
+        if message.reply_to_message and message.reply_to_message.from_user.id == self.client.me.id:
+            logger.info(f"[{self.name}] Processing reply from {from_user}")
+            return True
+
+        # Check if it's a message from another bot
+        return message.from_user.id in self.bot_manager.get_bot_ids()
+
+    async def _send_response(self, chat_id: int, response: str, reply_to_message_id: Optional[int]) -> None:
+        """Send a response message with typing simulation."""
+        if not reply_to_message_id:
+            logger.warning(f"[{self.name}] No message to reply to in chat {chat_id}")
+            return
+
+        # Simulate natural delay
+        wait_time = random.uniform(0.5, 3.0)
+        logger.debug(f"[{self.name}] Waiting {wait_time:.1f}s before typing")
+        await asyncio.sleep(wait_time)
+
+        # Simulate typing
+        await self.typing_simulator.simulate_typing(self.client, chat_id, len(response))
+
+        # Send message
+        await self.client.send_message(chat_id=chat_id, text=response, reply_to_message_id=reply_to_message_id)
+        logger.info(f"[{self.name}] Sent reply in chat {chat_id}")
 
     async def process_message(self, message: "Message", channels: list["Channel"]) -> None:
         """
@@ -171,72 +186,108 @@ class Bot(BotProtocol):
                 reply_text=message.reply_to_message.text if message.reply_to_message else None,
             )
 
-            # Wait a random time before starting to type
-            wait_time = random.uniform(0.5, 3.0)
-            logger.debug(f"[{self.name}] Waiting {wait_time:.1f}s before typing")
-            await asyncio.sleep(wait_time)
-
-            # Simulate typing
-            typing_time = len(response) / 20  # Approximately 20 characters per second
-            logger.debug(f"[{self.name}] Typing for {typing_time:.1f}s")
-            await self.client.send_chat_action(chat_id, enums.ChatAction.TYPING)
-            await asyncio.sleep(typing_time)
-            await self.client.send_chat_action(chat_id, enums.ChatAction.CANCEL)
-
-            # Send the response
-            if reply_to_message_id is None:
-                logger.warning(f"[{self.name}] No message to reply to in chat {chat_id}")
-                return
-
-            await self.client.send_message(chat_id=chat_id, text=response, reply_to_message_id=reply_to_message_id)
-            logger.info(f"[{self.name}] Sent reply in chat {chat_id}")
+            # Send response
+            await self._send_response(chat_id=chat_id, response=response, reply_to_message_id=reply_to_message_id)
 
             # Mark that the bot has replied to the message
             if message.id:
                 self.bot_manager.mark_bot_replied(
-                    self.bot_index,
-                    chat_id,
-                    message.id,
-                    message.reply_to_message.id if message.reply_to_message else message.id,
+                    chat_id=chat_id,
+                    replied_to_msg_id=message.reply_to_message.id if message.reply_to_message else message.id,
+                    msg_id=message.id,
+                    bot_index=self.bot_index,
                 )
                 logger.debug(f"[{self.name}] Marked as replied in chat {chat_id}")
 
         except Exception as e:
             logger.error(f"Error processing message: {e}")
+            raise MessageProcessingError(f"Failed to process message: {e}") from e
 
-    async def join_chat(self, chat_id: int, invite_link: str) -> bool:
+    async def _get_chat_access(self, chat_id: int, invite_link: str) -> Chat:
         """
-        Joins the chat if not already a participant.
+        Get access to a chat.
+
+        Args:
+            chat_id: The ID of the chat.
+            invite_link: The invite link of the chat.
+
+        Returns:
+            Chat: The chat object.
+
+        Raises:
+            ChatAccessError: If failed to access the chat.
+        """
+        try:
+            # Try direct access
+            try:
+                chat = await self.client.get_chat(chat_id)
+                if isinstance(chat, ChatPreview):
+                    raise ChatAccessError("Received ChatPreview instead of Chat")
+                return chat  # mypy knows it's Chat here because of isinstance check
+
+            except Exception:
+                pass
+
+            # Try via invite link
+            try:
+                chat = await self.client.join_chat(invite_link)
+                if isinstance(chat, ChatPreview):
+                    raise ChatAccessError("Received ChatPreview instead of Chat")
+                return chat
+
+            except UserAlreadyParticipant:
+                chat = await self.client.get_chat(chat_id)
+                if isinstance(chat, ChatPreview):
+                    raise ChatAccessError("Received ChatPreview instead of Chat")
+                return chat
+
+            except Exception as e:
+                logger.error(f"Failed to join chat: {e}")
+                raise
+
+        except Exception as e:
+            raise ChatAccessError(f"Failed to access chat: {e}")
+
+    async def send_initial_message(self, chat_id: int, invite_link: str) -> None:
+        """
+        Sends the initial message to the chat.
 
         Args:
             chat_id (int): The ID of the chat.
             invite_link (str): The invite link of the chat.
-
-        Returns:
-            bool: True if the bot successfully joined the chat or is already a participant, False otherwise.
         """
-        try:
-            # First, try to join via invite_link
+        max_retries = 5
+        retry_delay = 10
+        channels = SubscriptionManager.get_channels()
+
+        for attempt in range(max_retries):
             try:
-                chat = await self.client.join_chat(invite_link)
-                logger.info(f"Bot {self.name} joined chat {chat.id}")
-                return True
-            except UserAlreadyParticipant:
-                # If already in the group, just return success
-                logger.info(f"Bot {self.name} already in chat")
-                return True
-            except Exception:
-                # Try to join via chat_id
-                try:
-                    await self.client.get_chat(chat_id)
-                    logger.info(f"Bot {self.name} accessed chat {chat_id}")
-                    return True
-                except Exception as inner_e:
-                    logger.error(f"Bot {self.name} failed to access chat: {inner_e}")
-                    return False
-        except Exception as e:
-            logger.error(f"Bot {self.name} failed to join chat: {str(e)}")
-            return False
+                # Get chat access
+                current_chat = await self._get_chat_access(chat_id, invite_link)
+
+                # Generate and send the message
+                message = await self._generate_initial_message(
+                    chat_title=current_chat.title,
+                    chat_id=chat_id,
+                    channels=channels,
+                )
+
+                await self.typing_simulator.simulate_typing(self.client, chat_id, len(message))
+
+                await self.client.send_message(chat_id=chat_id, text=message, disable_web_page_preview=True)
+
+                logger.info(f"[{self.name}] Sent initial message to chat {chat_id}")
+                return
+
+            except FloodWait:
+                raise
+            except Exception as e:
+                logger.warning(f"[{self.name}] Attempt {attempt + 1}/{max_retries} failed: {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                else:
+                    logger.error(f"[{self.name}] Failed after {max_retries} attempts")
+                    raise
 
     async def _generate_initial_message(self, chat_title: str, chat_id: int, channels: list["Channel"]) -> str:
         """
@@ -268,149 +319,32 @@ class Bot(BotProtocol):
             logger.error(f"Error generating initial message: {e}")
             return "I wonder what you think about the latest developments in this field?"
 
-    async def send_initial_message(self, chat_id: int, invite_link: str) -> None:
-        """
-        Sends the initial message to the chat.
-
-        Args:
-            chat_id (int): The ID of the chat.
-            invite_link (str): The invite link of the chat.
-        """
-        max_retries = 5
-        retry_delay = 10
-        channels = SubscriptionManager.get_channels()
-
-        for attempt in range(max_retries):
-            try:
-                # Check access to the chat
-                try:
-                    current_chat = await self.client.get_chat(chat_id)
-                    logger.debug(f"[{self.name}] Already in chat {chat_id}")
-
-                except Exception:
-                    try:
-                        current_chat = await self.client.get_chat(invite_link)
-                        logger.debug(f"[{self.name}] Got chat info via invite link")
-
-                    except Exception:
-                        await self.client.join_chat(invite_link)
-                        await asyncio.sleep(1)
-                        current_chat = await self.client.get_chat(chat_id)
-                        logger.info(f"[{self.name}] Joined chat {chat_id}")
-
-                await asyncio.sleep(retry_delay)
-
-                # Generate and send the message
-                message = await self._generate_initial_message(
-                    chat_title=current_chat.title,
-                    chat_id=chat_id,
-                    channels=channels,
-                )
-
-                await self.typing_simulator.simulate_typing(self.client, chat_id, len(message))
-                await self.client.send_message(chat_id=chat_id, text=message, disable_web_page_preview=True)
-                logger.info(f"[{self.name}] Sent initial message to chat {chat_id}")
-                return
-
-            except FloodWait:
-                raise
-
-            except Exception as e:
-                logger.warning(f"[{self.name}] Attempt {attempt + 1}/{max_retries} failed: {str(e)}")
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(retry_delay)
-                else:
-                    logger.error(f"[{self.name}] Failed to send initial message after {max_retries} attempts")
-                    raise
-
-    async def get_chat_id_from_invite(self, invite_link: str) -> int:
-        """
-        Gets the chat ID from the invite link.
-
-        Args:
-            invite_link (str): The invite link of the chat.
-
-        Returns:
-            int: The ID of the chat.
-
-        Raises:
-            ValueError: If could not find chat for the invite link.
-        """
-        try:
-            # Join the chat or get information if already a participant
-            joined_chat = await self.client.join_chat(invite_link)
-            chat_id = joined_chat.id
-
-            logger.info(f"Got chat ID {chat_id} from invite link {invite_link}")
-            return chat_id
-
-        except UserAlreadyParticipant:
-            try:
-                # If already in the group, try to get information via get_chat
-                chat_result = await self.client.get_chat(chat_id=invite_link)
-
-                if isinstance(chat_result, Chat):
-                    chat_id = chat_result.id
-                    logger.info(f"Got chat ID {chat_id} for existing participant")
-                    return chat_id
-                else:
-                    raise ValueError("Received ChatPreview instead of Chat")
-
-            except Exception as e:
-                logger.error(f"Error getting chat ID for existing participant: {e}")
-                # Try an alternative method
-
-                try:
-                    # Try to get the list of chats and find the needed one
-                    dialogs = self.client.get_dialogs()
-                    if not dialogs:
-                        raise ValueError("Could not get dialogs")
-
-                    async for dialog in dialogs:
-                        if dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-                            try:
-                                invite = await self.client.get_chat_invite_link(
-                                    chat_id=dialog.chat.id,
-                                    invite_link=invite_link,
-                                )
-                                if invite.invite_link == invite_link:
-                                    logger.info(f"Found chat ID {dialog.chat.id} in dialogs")
-                                    return dialog.chat.id
-
-                            except Exception:
-                                continue
-
-                except Exception as e:
-                    logger.error(f"Error searching for chat in dialogs: {e}")
-                    raise
-
-                raise ValueError(f"Could not find chat for invite link {invite_link}")
-
-        except Exception as e:
-            logger.error(f"Error getting chat ID from invite link: {e}")
-            raise
-
     async def start(self) -> None:
         """Starts the bot."""
-        await self.client.start()
-        logger.info(f"Bot {self.name} started")
+        try:
+            await self.client.start()
+            logger.info(f"Bot {self.name} started")
 
-        @self.client.on_message(filters.text & filters.group)  # type: ignore
-        async def message_handler(client: Client, message: "Message") -> None:
-            """
-            Handles incoming messages.
+            @self.client.on_message(filters.text & filters.group)  # type: ignore
+            async def message_handler(client: Client, message: "Message") -> None:
+                """
+                Handles incoming messages.
 
-            Args:
-                client: The client instance.
-                message: The received message.
-            """
-            try:
-                if not await self.should_process_message(message):
-                    return
+                Args:
+                    client: The client instance.
+                    message: The received message.
+                """
+                try:
+                    if not await self._check_message_conditions(message):
+                        return
 
-                channels = SubscriptionManager.get_channels()
-                await self.process_message(message=message, channels=channels)
-                self.bot_manager.reset_chat_history(message.chat.id)
+                    channels = SubscriptionManager.get_channels()
+                    await self.process_message(message=message, channels=channels)
+                    self.bot_manager.reset_chat_history(message.chat.id)
 
-            except Exception as e:
-                logger.error(f"Error in message handler: {e}")
+                except Exception as ex:
+                    logger.error(f"Error in message handler: {ex}")
+
+        except Exception as e:
+            logger.error(f"Failed to start bot {self.name}: {e}")
+            raise BotError(f"Bot start failed: {e}") from e
