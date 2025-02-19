@@ -11,7 +11,6 @@ from core.managers.bot_manager import BotManager
 from core.managers.chat_manager import ChatManager
 from core.managers.subscription_manager import SubscriptionManager
 
-
 if TYPE_CHECKING:
     from core.schemas import BotCollection, ChannelCollection
     from core.project_types import BotProtocol, ChatConfig
@@ -31,6 +30,7 @@ class TelegramActivityManager:
 
         self.telegram_bots = bots_data.bots
         self.telegram_channels = channels_data.channels
+        SubscriptionManager.set_channels(self.telegram_channels)
 
     @staticmethod
     def log_info_block(text: str) -> None:
@@ -55,13 +55,13 @@ class TelegramActivityManager:
 
         # Create all bots
         created_bots: list[Bot] = []
-        for idx, bot_data in enumerate(self.telegram_bots):
+        for bot_data in self.telegram_bots:
             try:
-                bot = Bot(name=f"Bot{idx}", bot_data=bot_data)
+                bot = Bot(name=f"BOT_{bot_data.phone}", bot_data=bot_data)
                 created_bots.append(bot)
 
             except Exception as ex:
-                logger.error(f"Failed to create Bot{idx}: {ex}")
+                logger.error(f"Failed to create BOT_{bot_data.phone}: {ex}")
 
         if not created_bots:
             raise ValueError("No bots were created")
@@ -111,7 +111,9 @@ class TelegramActivityManager:
             try:
                 # Get chat ID from invite link
                 try:
-                    chat_id = await ChatManager.get_chat_id_from_invite(main_bot.client, invite_link)
+                    chat_id = await ChatManager.get_chat_id_from_invite(
+                        client=main_bot.client, invite_link=invite_link, bot_name=main_bot.name
+                    )
                     logger.info(f"Successfully got chat ID: {chat_id} for {invite_link}")
 
                 except Exception as ex:
@@ -165,7 +167,9 @@ class TelegramActivityManager:
                 logger.info(f"Initializing dialog in chat {channel.invite_link}")
 
                 # Send initial message
-                chat_id = await ChatManager.get_chat_id_from_invite(main_bot.client, channel.invite_link)
+                chat_id = await ChatManager.get_chat_id_from_invite(
+                    client=main_bot.client, invite_link=channel.invite_link, bot_name=main_bot.name
+                )
                 await main_bot.send_initial_message(chat_id=chat_id, invite_link=channel.invite_link)
                 logger.success(f"Successfully initialized dialog in chat {channel.invite_link}")
 
