@@ -1,23 +1,32 @@
-"""Manager for handling bot subscriptions to groups"""
+"""Manager for handling bot subscriptions to groups."""
 
-import asyncio
-import json
 import os
-from typing import TYPE_CHECKING, Sequence, Any, ClassVar
+import json
+import asyncio
+from asyncio import Task
+from typing import TYPE_CHECKING, Sequence, ClassVar
 
 from loguru import logger
 from pyrogram.errors import FloodWait
 
 from core.managers.chat_manager import ChatManager
-from core.schemas import Channel
 
 if TYPE_CHECKING:
+    from core.schemas import Channel
     from pyrogram.client import Client
     from core.project_types import BotProtocol, ChatConfig
 
 
+class SubscriptionError(Exception):
+    """Base exception for subscription errors."""
+
+
+class CacheError(SubscriptionError):
+    """Raised when there's an error with cache operations."""
+
+
 class SubscriptionManager:
-    """Manager for handling bot subscriptions to groups"""
+    """Manager for handling bot subscriptions to groups."""
 
     _subscribed_bots: ClassVar[dict[int, set[int]]] = {}
     _cache_file: ClassVar[str] = "chat_ids_cache.json"
@@ -25,20 +34,40 @@ class SubscriptionManager:
     chat_ids: ClassVar[dict[str, int]] = {}
 
     @classmethod
-    async def get_chat_id_from_invite(cls, client: "Client", invite_link: str, bot_name: str = "Unknown") -> int | None:
-        """Gets the chat ID from an invite link"""
+    async def get_chat_id_from_invite(cls, client: "Client", invite_link: str, bot_name: str) -> int | None:
+        """
+        Gets the chat ID from an invite link.
+
+        Args:
+            client: The client instance.
+            invite_link: The invite link of the chat.
+            bot_name: The name of the bot.
+
+        Returns:
+            int | None: The chat ID if successful, None otherwise.
+        """
         try:
             # Check cache
             if invite_link in cls.chat_ids:
-                return cls.chat_ids[invite_link]
+                cached_id = cls.chat_ids[invite_link]
+                if isinstance(cached_id, dict):
+                    logger.error(f"Cached chat ID for {invite_link} is a dictionary")
+                    cls.chat_ids.pop(invite_link)
+                    return None
+                return int(cached_id)
 
             # Get chat_id
-            chat_id = await ChatManager.get_chat_id_from_invite(client, invite_link, bot_name)
+            chat_id = await ChatManager.get_chat_id_from_invite(
+                client=client,
+                invite_link=invite_link,
+                bot_name=bot_name,
+            )
+
             if chat_id:
-                cls.chat_ids[invite_link] = chat_id
+                cls.chat_ids[invite_link] = int(chat_id)
                 cls.save_cache()
                 logger.success(f"Bot {bot_name} cached chat ID {chat_id} for {invite_link}")
-                return chat_id
+                return int(chat_id)
 
             return None
 
@@ -46,20 +75,33 @@ class SubscriptionManager:
             logger.warning(f"Bot {bot_name} got FloodWait in get_chat_id: {e.value} seconds")
             raise
 
+        except TypeError as e:
+            logger.error(f"Invalid chat ID format for {invite_link}: {e}")
+            return None
+
         except Exception as e:
-            logger.error(f"Bot {bot_name} failed to get chat ID for {invite_link}: {e}")
+            logger.error(f"Error getting chat ID: {e}")
             return None
 
     @classmethod
     async def check_subscription(cls, bot: "BotProtocol", chat_id: int) -> bool:
-        """Checks if a bot is subscribed to a channel and updates the cache."""
+        """
+        Checks if a bot is subscribed to a channel and updates the cache.
+
+        Args:
+            bot: The bot to check.
+            chat_id: The ID of the chat.
+
+        Returns:
+            bool: True if subscribed, False otherwise.
+        """
         try:
             await bot.client.get_chat(chat_id)
             if chat_id not in cls._subscribed_bots:
                 cls._subscribed_bots[chat_id] = set()
 
             api_id = bot.client.api_id
-            if api_id is not None:  # Check that api_id is not None
+            if api_id is not None:
                 cls._subscribed_bots[chat_id].add(api_id)
                 cls.save_cache()
                 logger.info(f"Bot {bot.name} (API ID: {api_id}) already has access to chat {chat_id}")
@@ -85,11 +127,18 @@ class SubscriptionManager:
 
     @classmethod
     async def subscribe_bot(cls, bot: "BotProtocol", chat_id: int, invite_link: str) -> None:
-        """Subscribes a single bot to a single channel"""
+        """
+        Subscribes a single bot to a single channel.
+
+        Args:
+            bot: The bot to subscribe.
+            chat_id: The ID of the chat.
+            invite_link: The invite link of the chat.
+        """
         while True:
             try:
                 api_id = bot.client.api_id
-                if api_id is None:  # Check that api_id is not None
+                if api_id is None:
                     logger.error(f"Bot {bot.name} has no API ID")
                     return
 
@@ -104,7 +153,10 @@ class SubscriptionManager:
 
                 # Try to subscribe
                 success = await ChatManager.join_chat(
-                    client=bot.client, chat_id=chat_id, invite_link=invite_link, bot_name=bot.name
+                    client=bot.client,
+                    chat_id=chat_id,
+                    invite_link=invite_link,
+                    bot_name=bot.name,
                 )
 
                 if success:
@@ -126,10 +178,25 @@ class SubscriptionManager:
 
     @classmethod
     async def subscribe_all_bots_to_chats(cls, bots: Sequence["BotProtocol"], chats: Sequence["ChatConfig"]) -> None:
-        """Subscribes all bots to all chats"""
+        """
+        Subscribes all bots to all chats.
+
+        Args:
+            bots: The bots to subscribe.
+            chats: The chats to subscribe to.
+        """
         logger.info("Starting subscription process...")
 
-        # First, get all chat_ids
+        # Get all chat_ids first
+        await cls._initialize_chat_ids(bots, chats)
+
+        # Create and run subscription tasks
+        tasks = cls._create_subscription_tasks(bots, chats)
+        await asyncio.gather(*tasks)
+
+    @classmethod
+    async def _initialize_chat_ids(cls, bots: Sequence["BotProtocol"], chats: Sequence["ChatConfig"]) -> None:
+        """Initialize chat IDs for all chats."""
         for chat in chats:
             if chat["invite_link"] not in cls.chat_ids:
                 for bot in bots:
@@ -141,8 +208,23 @@ class SubscriptionManager:
                         logger.warning(f"Bot {bot.name} got FloodWait, trying next bot")
                         continue
 
-        # Create tasks for each bot and each chat
-        tasks = []
+    @classmethod
+    def _create_subscription_tasks(
+        cls,
+        bots: Sequence["BotProtocol"],
+        chats: Sequence["ChatConfig"],
+    ) -> list[Task[None]]:
+        """
+        Create subscription tasks for all bots and chats.
+
+        Args:
+            bots: The bots to subscribe.
+            chats: The chats to subscribe to.
+
+        Returns:
+            List[Task[None]]: List of subscription tasks.
+        """
+        tasks: list[Task[None]] = []
         for bot in bots:
             for chat in chats:
                 chat_id = cls.chat_ids.get(chat["invite_link"])
@@ -152,26 +234,25 @@ class SubscriptionManager:
 
                 task = asyncio.create_task(cls.subscribe_bot(bot, chat_id, chat["invite_link"]))
                 tasks.append(task)
-
-        # Wait for all tasks to complete
-        await asyncio.gather(*tasks)
+        return tasks
 
     @classmethod
     def load_cache(cls) -> None:
-        """Loads the cache of chat_ids and subscriptions"""
+        """Loads the cache of chat_ids and subscriptions."""
         try:
             if os.path.exists(cls._cache_file):
                 with open(cls._cache_file, encoding="utf-8") as f:
-                    data: dict[str, Any] = json.load(f)
-                    cls.chat_ids = {str(k): int(v) for k, v in data.get("chat_ids", {}).items()}
+                    data = json.load(f)
+                    cls.chat_ids = {k: int(v) for k, v in data.get("chat_ids", {}).items()}
                     cls._subscribed_bots = {int(k): set(v) for k, v in data.get("subscribed_bots", {}).items()}
 
         except Exception as e:
             logger.error(f"Error loading cache: {e}")
+            raise CacheError(f"Failed to load cache: {e}")
 
     @classmethod
     def save_cache(cls) -> None:
-        """Saves the cache of chat_ids and subscriptions"""
+        """Saves the cache of chat_ids and subscriptions."""
         try:
             data = {
                 "chat_ids": cls.chat_ids,
@@ -182,16 +263,7 @@ class SubscriptionManager:
 
         except Exception as e:
             logger.error(f"Error saving cache: {e}")
-
-    @classmethod
-    def initialize_channels(cls, channels: list["Channel"]) -> None:
-        """
-        Initializes the channels list.
-
-        Args:
-            channels: List of channels to initialize with.
-        """
-        cls._channels = channels
+            raise CacheError(f"Failed to save cache: {e}")
 
     @classmethod
     def get_channels(cls) -> list["Channel"]:
