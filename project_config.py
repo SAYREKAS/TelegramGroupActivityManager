@@ -11,9 +11,20 @@ from core.project_types import ChatBotModel
 class ChatBotConfig(BaseModel):
     """Configuration for ChatBot."""
 
-    OPEN_API_KEY: str = Field(default="", description="OpenAI API key for accessing LLM")
-    MODEL: ChatBotModel = Field(default="gpt-4o-mini", description="Model for text generation")
-    TEMPERATURE: float = Field(ge=0.0, le=1.0, default=0.7, description="Temperature for generation")
+    OPEN_API_KEY: str = Field(
+        default="",
+        description="OpenAI API key for accessing LLM",
+    )
+    MODEL: ChatBotModel = Field(
+        default="gpt-4o-mini",
+        description="Model for text generation",
+    )
+    TEMPERATURE: float = Field(
+        ge=0.0,
+        le=1.0,
+        default=0.7,
+        description="Temperature for generation",
+    )
     GENERATE_INITIAL_MESSAGE_RULES: str = """
     1. NEVER mention the provided group description
     2. Create ONE short message that:
@@ -46,15 +57,41 @@ class ChatBotConfig(BaseModel):
        - Varied in responses
        - Specific in examples
        - Open to discussion."""
-    TEST_MODE: bool = Field(default=False, description="Test mode")
+    TEST_MODE: bool = Field(
+        default=False,
+        description="Test mode",
+    )
 
 
-class BotBehaviorConfig(BaseModel):
+class BotManagerConfig(BaseModel):
     """Configuration for bot behavior."""
 
-    FLOOD_LIMIT: float = Field(default=3.0, ge=0.0, description="Time limit between messages to prevent flooding")
-    TYPING_SPEED: float = Field(default=0.1, ge=0.0, description="Typing speed in seconds per character")
-    MAX_TYPING_TIME: float = Field(default=60.0, ge=0.0, description="Maximum time limit for typing simulation")
+    FLOOD_LIMIT: float = Field(
+        default=3.0,
+        ge=0.0,
+        description="Time limit between messages to prevent flooding",
+    )
+
+    MIN_BOTS_TO_RESET: int = Field(
+        default=2,
+        ge=1,
+        description="Minimum number of bots that should reply before resetting chat history",
+    )
+
+
+class TypingSimulatorConfig(BaseModel):
+    """Configuration for bot behavior."""
+
+    TYPING_SPEED: float = Field(
+        default=0.1,
+        ge=0.0,
+        description="Typing speed in seconds per character",
+    )
+    MAX_TYPING_TIME: float = Field(
+        default=60.0,
+        ge=0.0,
+        description="Maximum time limit for typing simulation",
+    )
 
 
 class Settings(BaseSettings):
@@ -69,7 +106,8 @@ class Settings(BaseSettings):
     )
 
     chat_bot: ChatBotConfig = ChatBotConfig()
-    bot_behavior: BotBehaviorConfig = BotBehaviorConfig()
+    bot_manager: BotManagerConfig = BotManagerConfig()
+    typing_simulator: TypingSimulatorConfig = TypingSimulatorConfig()
 
 
 settings = Settings()

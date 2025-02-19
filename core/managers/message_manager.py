@@ -16,7 +16,7 @@ class MessageManager:
 
     _last_message_authors: dict[int, set[int]] = {}
     _last_message_time: dict[int, float] = {}
-    _flood_limit: float = settings.FLOOD_LIMIT
+    _flood_limit: float = settings.bot_manager.FLOOD_LIMIT
 
     @classmethod
     def can_bot_reply(cls, chat_id: int, bot_index: int) -> bool:

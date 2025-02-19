@@ -42,7 +42,8 @@ class BotManager:
     _last_message_authors: ClassVar["LastMessageAuthors"] = {}
     _last_message_time: ClassVar["LastMessageTime"] = {}
     _bot_replies: ClassVar[dict["ChatID", dict[int, dict[int, set["BotIndex"]]]]] = {}
-    _flood_limit = settings.bot_behavior.FLOOD_LIMIT
+    _flood_limit = settings.bot_manager.FLOOD_LIMIT
+    _min_bots_to_reset = settings.bot_manager.MIN_BOTS_TO_RESET
 
     def __new__(cls) -> Self:
         """Implements singleton pattern."""
@@ -190,7 +191,7 @@ class BotManager:
             chat_id: The ID of the chat.
         """
         authors = cls._last_message_authors.get(chat_id, set())
-        if len(authors) >= 2 or len(authors) >= cls._total_bots - 1:
+        if len(authors) >= cls._min_bots_to_reset or len(authors) >= cls._total_bots - 1:
             cls._last_message_authors[chat_id] = set()
             logger.debug(f"Reset chat history for chat {chat_id}")
 

@@ -18,8 +18,8 @@ class TypingSimulator:
 
     def __init__(self) -> None:
         """Initialize typing simulator."""
-        self.typing_speed = settings.bot_behavior.TYPING_SPEED
-        self.max_typing_time = settings.bot_behavior.MAX_TYPING_TIME
+        self.typing_speed = settings.typing_simulator.TYPING_SPEED
+        self.max_typing_time = settings.typing_simulator.MAX_TYPING_TIME
 
     @staticmethod
     async def calculate_typing_duration(text_length: int, typing_speed: float, max_time: float) -> float:
