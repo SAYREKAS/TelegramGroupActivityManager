@@ -9,6 +9,7 @@ from core.project_types import ChatBotModel
 
 
 class ChatBotConfig(BaseModel):
+    """Configuration for ChatBot."""
 
     OPEN_API_KEY: str = Field(default="", description="OpenAI API key for accessing LLM")
     MODEL: ChatBotModel = Field(default="gpt-4o-mini", description="Model for text generation")
@@ -48,6 +49,14 @@ class ChatBotConfig(BaseModel):
     TEST_MODE: bool = Field(default=False, description="Test mode")
 
 
+class BotBehaviorConfig(BaseModel):
+    """Configuration for bot behavior."""
+
+    FLOOD_LIMIT: float = Field(default=3.0, ge=0.0, description="Time limit between messages to prevent flooding")
+    TYPING_SPEED: float = Field(default=0.1, ge=0.0, description="Typing speed in seconds per character")
+    MAX_TYPING_TIME: float = Field(default=60.0, ge=0.0, description="Maximum time limit for typing simulation")
+
+
 class Settings(BaseSettings):
     """Application settings."""
 
@@ -60,10 +69,7 @@ class Settings(BaseSettings):
     )
 
     chat_bot: ChatBotConfig = ChatBotConfig()
-
-    FLOOD_LIMIT: float = Field(default=3.0, description="")
-    TYPING_SPEED: float = Field(default=0.1, ge=0.0, description="Typing speed (seconds per character)")
-    MAX_TYPING_TIME: float = Field(default=60.0, ge=0.0, description="Limits the maximum typing time")
+    bot_behavior: BotBehaviorConfig = BotBehaviorConfig()
 
 
 settings = Settings()
