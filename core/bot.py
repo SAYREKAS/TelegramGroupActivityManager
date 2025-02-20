@@ -91,6 +91,16 @@ class Bot(BotProtocol):
         try:
             # Normalize chat_id
             normalized_id = self._normalize_chat_id(chat_id)
+            logger.debug(f"Looking for prompt for normalized chat ID: {normalized_id}")
+
+            # Log available channels and their IDs
+            for channel in channels:
+                cached_id = SubscriptionManager.chat_ids.get(channel.invite_link)
+                if cached_id:
+                    logger.debug(
+                        f"Channel {channel.invite_link} has cached ID: {cached_id} "
+                        f"(normalized: {self._normalize_chat_id(cached_id)})"
+                    )
 
             # Look for chat in SubscriptionManager cache
             for channel in channels:
