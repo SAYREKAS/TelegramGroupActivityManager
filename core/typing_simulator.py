@@ -26,7 +26,7 @@ class TypingSimulator:
         """Calculates the time of typing based on its length."""
         return min(text_length * typing_speed, max_time)
 
-    async def simulate_typing(self, client: "Client", chat_id: int, text_length: int = 0) -> None:
+    async def simulate_typing(self, client: "Client", chat_id: int, text_length: int) -> None:
         """Mimics typing text based on its length."""
         try:
             typing_duration = await self.calculate_typing_duration(

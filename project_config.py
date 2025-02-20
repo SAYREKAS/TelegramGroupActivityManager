@@ -96,7 +96,7 @@ class TypingSimulatorConfig(BaseModel):
         description="Typing speed in seconds per character",
     )
     MAX_TYPING_TIME: float = Field(
-        default=60.0,
+        default=300.0,
         ge=0.0,
         description="Maximum time limit for typing simulation",
     )

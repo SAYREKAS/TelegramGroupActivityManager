@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Optional
 from loguru import logger
 from pyrogram import filters
 from pyrogram.client import Client
-from pyrogram.types import Chat, ChatPreview
 from pyrogram.errors import FloodWait, UserAlreadyParticipant
+from pyrogram.types import Chat, ChatPreview
 
 from core.chat_bot import ChatBot
 from core.managers.bot_manager import BotManager
@@ -162,7 +162,7 @@ class Bot(BotProtocol):
         await asyncio.sleep(wait_time)
 
         # Simulate typing
-        await self.typing_simulator.simulate_typing(self.client, chat_id, len(response))
+        await self.typing_simulator.simulate_typing(client=self.client, chat_id=chat_id, text_length=len(response))
 
         # Send message
         await self.client.send_message(chat_id=chat_id, text=response, reply_to_message_id=reply_to_message_id)
@@ -283,7 +283,11 @@ class Bot(BotProtocol):
                     channels=channels,
                 )
 
-                await self.typing_simulator.simulate_typing(self.client, chat_id, len(message))
+                await self.typing_simulator.simulate_typing(
+                    client=self.client,
+                    chat_id=chat_id,
+                    text_length=len(message),
+                )
 
                 await self.client.send_message(chat_id=chat_id, text=message, disable_web_page_preview=True)
 
