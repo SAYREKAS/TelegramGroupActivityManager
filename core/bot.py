@@ -15,6 +15,7 @@ from core.managers.bot_manager import BotManager
 from core.managers.subscription_manager import SubscriptionManager
 from core.project_types import BotProtocol
 from core.typing_simulator import TypingSimulator
+from project_config import settings
 
 if TYPE_CHECKING:
     from pyrogram.types import Message
@@ -156,7 +157,7 @@ class Bot(BotProtocol):
             return
 
         # Simulate natural delay
-        wait_time = random.uniform(0.5, 3.0)
+        wait_time = random.uniform(1.0, settings.bot_manager.FLOOD_LIMIT)
         logger.debug(f"[{self.name}] Waiting {wait_time:.1f}s before typing")
         await asyncio.sleep(wait_time)
 
