@@ -11,8 +11,8 @@ from core.project_types import ChatBotModel
 class ChatBotConfig(BaseModel):
     """Configuration for ChatBot."""
 
-    OPEN_API_KEY: str = Field(
-        default="",
+    OPEN_API_KEY: str | None = Field(
+        default=None,
         description="OpenAI API key for accessing LLM",
     )
     MODEL: ChatBotModel = Field(
@@ -25,7 +25,8 @@ class ChatBotConfig(BaseModel):
         default=0.7,
         description="Temperature for generation",
     )
-    GENERATE_INITIAL_MESSAGE_RULES: str = """
+    GENERATE_INITIAL_MESSAGE_RULES: str = Field(
+        default="""
     1. NEVER mention the provided group description
     2. Create ONE short message that:
        - Breaks a specific, interesting topic
@@ -37,8 +38,12 @@ class ChatBotConfig(BaseModel):
        - General topics and questions
        - A formal tone
        - Direct questions "What do you think?"
-    4. Write as a regular user who wants to share an opinion or discuss something specific."""
-    GENERATE_RESPONSE_RULES: str = """
+    4. Write as a regular user who wants to share an opinion or discuss something specific.
+    """,
+        description="Rules for generating initial messages",
+    )
+    GENERATE_RESPONSE_RULES: str = Field(
+        default="""
     1. NEVER mention the provided group description
     2. Use the language that is commonly used by the participants in the chat.
     3. You can:
@@ -56,7 +61,10 @@ class ChatBotConfig(BaseModel):
        - Natural in communication
        - Varied in responses
        - Specific in examples
-       - Open to discussion."""
+       - Open to discussion.
+       """,
+        description="Rules for generating responses",
+    )
     TEST_MODE: bool = Field(
         default=False,
         description="Test mode",
@@ -64,10 +72,10 @@ class ChatBotConfig(BaseModel):
 
 
 class BotManagerConfig(BaseModel):
-    """Configuration for bot behavior."""
+    """Configuration for bot manager."""
 
     FLOOD_LIMIT: float = Field(
-        default=3.0,
+        default=30.0,
         ge=0.0,
         description="Time limit between messages to prevent flooding",
     )
@@ -75,12 +83,12 @@ class BotManagerConfig(BaseModel):
     MIN_BOTS_TO_RESET: int = Field(
         default=2,
         ge=1,
-        description="Minimum number of bots that should reply before resetting chat history",
+        description="Minimum number of bots that should reply before resetting chat history.",
     )
 
 
 class TypingSimulatorConfig(BaseModel):
-    """Configuration for bot behavior."""
+    """Configuration for typing simulation."""
 
     TYPING_SPEED: float = Field(
         default=0.1,
