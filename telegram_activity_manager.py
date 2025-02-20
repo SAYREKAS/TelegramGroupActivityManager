@@ -30,6 +30,11 @@ class TelegramActivityManager:
 
         self.telegram_bots = bots_data.bots
         self.telegram_channels = channels_data.channels
+        
+        logger.debug(f"Initializing with {len(self.telegram_channels)} channels:")
+        for channel in self.telegram_channels:
+            logger.debug(f"Channel: {channel.invite_link} with prompt: {channel.prompt[:50]}...")
+        
         SubscriptionManager.set_channels(self.telegram_channels)
 
     @staticmethod
